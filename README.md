@@ -33,7 +33,7 @@ This project creates a 3D scene using THREE.js and CANNON.js where hackathon car
 
 1. Start a local server in the project directory:
     ```sh
-    npx live-server
+    npm run dev --verbose (verbose flag optional)
     ```
 
 2. Open your browser and go to `http://localhost:5173` (or the address provided by your local server).
