@@ -38,7 +38,6 @@ cube.castShadow = true;
 cube.position.y = 0.5;
 scene.add(cube);
 
-// Create a physics body for the cube
 const cubeShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
 const cubeBody = new CANNON.Body({ mass: 1 });
 cubeBody.addShape(cubeShape);
@@ -46,7 +45,7 @@ cubeBody.position.set(0, 0.5, 0);
 world.addBody(cubeBody);
 
 
-// Create a physics body for the plane
+// plane
 
 const planeShape = new CANNON.Plane();
 const planeBody = new CANNON.Body({ mass: 0 }); // mass 0 makes it static
@@ -57,20 +56,19 @@ world.addBody(planeBody);
 const planeGeometry = new THREE.PlaneGeometry(100, 100);
 const planeMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00, side: THREE.DoubleSide }); // Use MeshStandardMaterial
 const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-plane.receiveShadow = true; // Enable shadow receiving for the plane
-plane.rotation.x = Math.PI / 2; // Rotate the plane to make it horizontal
+plane.receiveShadow = true; 
+plane.rotation.x = Math.PI / 2; 
 scene.add(plane);
 
 //skybox
 new RGBELoader()
-  .load("env.hdr", function (texture) {
+  .load("/env.hdr", function (texture) {
     texture.mapping = THREE.EquirectangularReflectionMapping;
     scene.background = texture;
     scene.environment = texture;
   });
 
 //lighting
-
 const sunLight = new THREE.DirectionalLight(0xffe5b4, 1); // Slightly yellowish color
 
 const angle = 45 * Math.PI / 180;
