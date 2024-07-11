@@ -36,34 +36,135 @@ controls.maxDistance = 50;
 controls.cursor = new THREE.Vector3(0,0,0);
 controls.maxTargetRadius = 50;
 controls.enablePan = true;
+controls.maxZoom = 1;
 
-// Cube
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-const cube = new THREE.Mesh(geometry, material);
-cube.castShadow = true;
-cube.position.y = 0.5;
-scene.add(cube);
+// Plane class
+class Plane {
+  constructor(scene, world, color = 0xffff00) {
+    // CANNON.js plane
+    const planeShape = new CANNON.Plane();
+    this.planeBody = new CANNON.Body({ mass: 0 });
+    this.planeBody.addShape(planeShape);
+    this.planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    world.addBody(this.planeBody);
 
-const cubeShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
-const cubeBody = new CANNON.Body({ mass: 1 });
-cubeBody.addShape(cubeShape);
-cubeBody.position.set(0, 0.5, 0);
-world.addBody(cubeBody);
+    // THREE.js plane
+    const planeGeometry = new THREE.PlaneGeometry(100, 100);
+    const planeMaterial = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide });
+    this.plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    this.plane.receiveShadow = true;
+    this.plane.rotation.x = Math.PI / 2;
+    scene.add(this.plane);
+  }
+}
 
-// Plane
-const planeShape = new CANNON.Plane();
-const planeBody = new CANNON.Body({ mass: 0 });
-planeBody.addShape(planeShape);
-planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-world.addBody(planeBody);
+// Cube class
+class Cube {
+  constructor(scene, world, color = 0x00ff00, position = { x: 0, y: 0.5, z: 0 }) {
+    // CANNON.js cube
+    const cubeShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
+    this.cubeBody = new CANNON.Body({ mass: 1 });
+    this.cubeBody.addShape(cubeShape);
+    this.cubeBody.position.set(position.x, position.y, position.z);
+    world.addBody(this.cubeBody);
 
-const planeGeometry = new THREE.PlaneGeometry(100, 100);
-const planeMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00, side: THREE.DoubleSide });
-const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-plane.receiveShadow = true;
-plane.rotation.x = Math.PI / 2;
-scene.add(plane);
+    // THREE.js cube
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshStandardMaterial({ color });
+    this.cube = new THREE.Mesh(geometry, material);
+    this.cube.castShadow = true;
+    scene.add(this.cube);
+
+    // State flag for cube
+    this.cubeInFrontOfCamera = false;
+
+    // Register mouse click event
+    window.addEventListener('click', (event) => this.onClick(event), false);
+  }
+
+  update() {
+    if (this.cubeInFrontOfCamera) {
+      // Move cube in front of camera
+      const v1 = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+      const cameraOffset = camera.position.clone().add(v1.multiplyScalar(-2));
+      this.cubeBody.quaternion.copy(camera.quaternion);
+      this.cubeBody.position.copy(cameraOffset);
+      this.cubeBody.velocity.set(0, 0, 0); // Prevent it from falling
+      this.cubeBody.angularVelocity.set(0, 0, 0); // Prevent it from rotating
+      this.cube.position.copy(this.cubeBody.position);
+      this.cube.quaternion.copy(this.cubeBody.quaternion);
+    } else {
+      this.cube.position.copy(this.cubeBody.position);
+      this.cube.quaternion.copy(this.cubeBody.quaternion);
+    }
+  }
+
+  onClick(event) {
+    // Update the mouse vector with the current mouse position
+    const mouse = new THREE.Vector2(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1
+    );
+
+    // Use the raycaster to check if the cube was clicked
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(scene.children, true);
+    if (intersects.length > 0) {
+      // Sort the intersects array by distance from the camera
+      intersects.sort((a, b) => a.distance - b.distance);
+      const closestIntersect = intersects[0];
+
+      if (closestIntersect.object === this.cube) {
+        // Toggle the cube's state
+        if (this.cubeInFrontOfCamera) {
+          // The cube is in front of the camera, throw it towards the center of the plane
+          this.cubeBody.type = CANNON.Body.DYNAMIC;
+          const cameraDirection = new THREE.Vector3();
+          const forceVec = camera.getWorldDirection(cameraDirection).multiplyScalar(30);
+          const forceDirection = new CANNON.Vec3(forceVec.x, forceVec.y, forceVec.z);
+          this.cubeBody.applyImpulse(forceDirection, this.cubeBody.position);
+
+          this.cubeInFrontOfCamera = false;
+        } else {
+          // The cube is not in front of the camera, move it closer
+          this.cubeBody.type = CANNON.Body.KINEMATIC;
+          this.cubeInFrontOfCamera = true;
+        }
+      }
+    }
+  }
+}
+
+// Create instances of Plane and Cube
+const plane1 = new Plane(scene, world);
+const cube1 = new Cube(scene, world);
+const cube2 = new Cube(scene, world, 0xff0000, { x: 2, y: 0.5, z: 2 });
+const objects = [cube1, cube2]
+
+// Animation
+function animate() {
+  requestAnimationFrame(animate);
+
+  world.step(1 / 60);
+
+  cube1.update();
+  cube2.update();
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// Resize
+function onWindowResize() {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(width, height);
+}
 
 // Skybox
 new RGBELoader()
@@ -109,93 +210,11 @@ const hexX = 0xff0000;
 const hexY = 0x00ff00;
 const hexZ = 0x0000ff;
 
-
 const arrowX = new THREE.ArrowHelper( dirX, origin, length, hexX );
 const arrowY = new THREE.ArrowHelper( dirY, origin, length, hexY );
 const arrowZ = new THREE.ArrowHelper( dirZ, origin, length, hexZ );
 scene.add(arrowX);
 scene.add(arrowY);
 scene.add(arrowZ);
-
-// State flag for cube
-let cubeInFrontOfCamera = false;
-
-// Animation
-function animate() {
-  requestAnimationFrame(animate);
-  
-  world.step(1 / 60);
-
-  if (cubeInFrontOfCamera) {
-    // Move cube in front of camera
-    const v1 = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
-    const cameraOffset = camera.position.clone().add(v1.multiplyScalar(-2));
-    cubeBody.quaternion.copy(camera.quaternion);
-    cubeBody.position.copy(cameraOffset);
-    cubeBody.velocity.set(0, 0, 0); // Prevent it from falling
-    cubeBody.angularVelocity.set(0, 0, 0); // Prevent it from rotating
-    cube.position.copy(cubeBody.position);
-    cube.quaternion.copy(cubeBody.quaternion);
-    cube.position.copy(cubeBody.position);
-    cube.quaternion.copy(cubeBody.quaternion);
-  } else {
-    cube.position.copy(cubeBody.position);
-    cube.quaternion.copy(cubeBody.quaternion);
-  }
-
-  controls.update();
-  //console.log(camera.position, controls.getPolarAngle(), controls.getAzimuthalAngle());
-  
-  renderer.render(scene, camera);
-}
-
-// Resize
-function onWindowResize() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(width, height);
-}
-
-// Raycasting
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-
-window.addEventListener('click', onClick, false);
-
-function onClick(event) {
-  // Update the mouse vector with the current mouse position
-  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-  // Use the raycaster to check if the cube was clicked
-  raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects(scene.children);
-
-  for (let i = 0; i < intersects.length; i++) {
-    if (intersects[i].object === cube) {
-      // Toggle the cube's state
-      if (cubeInFrontOfCamera) {
-        // The cube is in front of the camera, throw it towards the center of the plane
-        cubeBody.type = CANNON.Body.DYNAMIC;
-        const cameraDirection = new THREE.Vector3();
-        const forceVec = camera.getWorldDirection(cameraDirection).multiplyScalar(30);
-        const forceDirection = new CANNON.Vec3(forceVec.x, forceVec.y, forceVec.z);
-        cubeBody.applyImpulse(forceDirection, cubeBody.position);
-
-        
-        cubeInFrontOfCamera = false;
-      } else {
-        // The cube is not in front of the camera, move it closer
-        cubeBody.type = CANNON.Body.KINEMATIC;
-        cubeInFrontOfCamera = true;
-      }
-      break;
-    }
-  }
-}
 
 animate();
