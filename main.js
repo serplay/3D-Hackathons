@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import * as CANNON from 'cannon';
+import { RoundedBoxGeometry } from 'three/examples/jsm/Addons.js';
 
 // Scene
 const scene = new THREE.Scene();
@@ -27,6 +28,35 @@ window.addEventListener('resize', onWindowResize);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
+
+// Skybox
+new RGBELoader()
+  .load("/env.hdr", function (texture) {
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    scene.background = texture;
+    scene.environment = texture;
+  });
+
+// Lighting
+const sunLight = new THREE.DirectionalLight(0xffe5b4, 1);
+
+const angle = 45 * Math.PI / 180;
+const d = 500;
+sunLight.position.set(d * Math.cos(angle), d * Math.sin(angle), d);
+
+sunLight.castShadow = true;
+
+scene.add(sunLight);
+
+sunLight.shadow.camera.left = -100;
+sunLight.shadow.camera.right = 100;
+sunLight.shadow.camera.top = 100;
+sunLight.shadow.camera.bottom = -100;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 1000;
+
+sunLight.shadow.mapSize.width = 4096;
+sunLight.shadow.mapSize.height = 4096;
 
 // Cam Controls
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -60,16 +90,23 @@ class Plane {
 
 // Cube class
 class Cube {
-  constructor(scene, world, color = 0x00ff00, position = { x: 0, y: 0.5, z: 0 }) {
+  constructor(
+    scene,
+    world,
+    id, 
+    color = 0x00ff00, 
+    position = { x: 0, y: 0.5, z: 0 }, 
+    dimensions = { x: 1, y: 1, z: 1 }
+  ) {
     // CANNON.js cube
-    const cubeShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
+    const cubeShape = new CANNON.Box(new CANNON.Vec3(dimensions.x / 2, dimensions.y / 2, dimensions.z / 2));
     this.cubeBody = new CANNON.Body({ mass: 1 });
     this.cubeBody.addShape(cubeShape);
     this.cubeBody.position.set(position.x, position.y, position.z);
     world.addBody(this.cubeBody);
 
     // THREE.js cube
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const geometry = new RoundedBoxGeometry( dimensions.x, dimensions.y, dimensions.z, 10, 3.14/18 );
     const material = new THREE.MeshStandardMaterial({ color });
     this.cube = new THREE.Mesh(geometry, material);
     this.cube.castShadow = true;
@@ -86,7 +123,7 @@ class Cube {
     if (this.cubeInFrontOfCamera) {
       // Move cube in front of camera
       const v1 = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
-      const cameraOffset = camera.position.clone().add(v1.multiplyScalar(-2));
+      const cameraOffset = camera.position.clone().add(v1.multiplyScalar(-10));
       this.cubeBody.quaternion.copy(camera.quaternion);
       this.cubeBody.position.copy(cameraOffset);
       this.cubeBody.velocity.set(0, 0, 0); // Prevent it from falling
@@ -138,9 +175,10 @@ class Cube {
 
 // Create instances of Plane and Cube
 const plane1 = new Plane(scene, world);
-const cube1 = new Cube(scene, world);
-const cube2 = new Cube(scene, world, 0xff0000, { x: 2, y: 0.5, z: 2 });
-const objects = [cube1, cube2]
+const cubes = [];
+for (let i = 0; i < 10; i++) {
+  cubes.push(new Cube(scene, world,i, Math.round(0xffffff*Math.random()), { x: Math.random()*10, y: Math.random()*10, z: Math.random()*10 },{ x: Math.random()*10, y: Math.random()*10, z: Math.random()*10 }));
+}
 
 // Animation
 function animate() {
@@ -148,8 +186,7 @@ function animate() {
 
   world.step(1 / 60);
 
-  cube1.update();
-  cube2.update();
+  cubes.forEach(cube => cube.update());
 
   controls.update();
   renderer.render(scene, camera);
@@ -165,35 +202,6 @@ function onWindowResize() {
 
   renderer.setSize(width, height);
 }
-
-// Skybox
-new RGBELoader()
-  .load("/env.hdr", function (texture) {
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    scene.background = texture;
-    scene.environment = texture;
-  });
-
-// Lighting
-const sunLight = new THREE.DirectionalLight(0xffe5b4, 1);
-
-const angle = 45 * Math.PI / 180;
-const d = 500;
-sunLight.position.set(d * Math.cos(angle), d * Math.sin(angle), d);
-
-sunLight.castShadow = true;
-
-scene.add(sunLight);
-
-sunLight.shadow.camera.left = -100;
-sunLight.shadow.camera.right = 100;
-sunLight.shadow.camera.top = 100;
-sunLight.shadow.camera.bottom = -100;
-sunLight.shadow.camera.near = 0.5;
-sunLight.shadow.camera.far = 1000;
-
-sunLight.shadow.mapSize.width = 4096;
-sunLight.shadow.mapSize.height = 4096;
 
 // Helper
 const dirX = new THREE.Vector3( 1, 0, 0 );
