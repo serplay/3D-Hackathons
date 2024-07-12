@@ -1,35 +1,137 @@
-import './style.css'
-import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import './style.css';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import * as CANNON from 'cannon';
-import { RoundedBoxGeometry } from 'three/examples/jsm/Addons.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { FastAverageColor } from 'fast-average-color';
 
-// Scene
+// Hackathons
+async function pullHackathons() {
+  const response = await fetch('https://corsproxy.io/?'+'https://hackathons.hackclub.com/api/events/all');
+  console.log(response);
+  const hackathons = await response.json();
+  const length = hackathons.length;
+  const last50 = hackathons.slice(length - 50, length);
+  return last50;
+}
+const hackathons = await pullHackathons();
+async function createHackathonCanvas(
+  banner = '/default_card_bg.png',
+  logo = '/logo.png',
+  name = 'RythmHacks',
+  date = 'September 1–3',
+  city = 'Waterloo',
+  state = '',
+  country = 'Canada',
+  eventType = 'in-person'
+) {
+  const scalar = 4;
+  const hackathonBanner = new Image();
+  hackathonBanner.src = banner;
+
+  const hackathonLogo = new Image();
+  hackathonLogo.src = logo;
+
+  const hackathonCanvas = document.createElement('canvas');
+  hackathonCanvas.width = 640 * scalar;
+  hackathonCanvas.height = 360 * scalar;
+  hackathonCanvas.id = name;
+  document.body.appendChild(hackathonCanvas);
+
+  const eventTypeColors = {
+    'in-person': '#00BCD4',
+    'hybrid': '#4CAF50',
+    'online': '#F44336'
+  };
+
+  await Promise.all([
+    new Promise(resolve => { hackathonBanner.onload = resolve; }),
+    new Promise(resolve => { hackathonLogo.onload = resolve; })
+  ]);
+
+  const canvas = document.querySelector('#' + name);
+  const ctx = canvas.getContext('2d');
+
+  ctx.drawImage(hackathonBanner, 0, 0, 640 * scalar, 360 * scalar);
+
+  const logoSize = 100 * scalar;
+  ctx.drawImage(hackathonLogo, 320 * scalar - logoSize / 2, 160 * scalar - logoSize / 2, logoSize, logoSize);
+
+  ctx.font = 'bold 160px system-ui';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+
+  const text_distance = 25 * scalar;
+  ctx.fillText(name, 320 * scalar, 285 * scalar + text_distance);
+
+  ctx.font = '100px system-ui';
+  ctx.fillText(`${date}: ${city}, ${country}`, 320 * scalar, 240 * scalar + text_distance);
+
+  const eventTypeText = eventType.charAt(0).toUpperCase() + eventType.slice(1);
+  const eventTypeColor = eventTypeColors[eventType];
+  ctx.fillStyle = eventTypeColor;
+  ctx.strokeStyle = eventTypeColor;
+  ctx.lineWidth = 2;
+
+  const rectX = 480 * scalar - 100;
+  const rectY = 20 * scalar;
+  const rectWidth = 150 * scalar;
+  const rectHeight = 40 * scalar;
+  const rectRadius = 10 * scalar;
+
+  ctx.beginPath();
+  ctx.moveTo(rectX + rectRadius, rectY);
+  ctx.lineTo(rectX + rectWidth - rectRadius, rectY);
+  ctx.quadraticCurveTo(rectX + rectWidth, rectY, rectX + rectWidth, rectY + rectRadius);
+  ctx.lineTo(rectX + rectWidth, rectY + rectHeight - rectRadius);
+  ctx.quadraticCurveTo(rectX + rectWidth, rectY + rectHeight, rectX + rectWidth - rectRadius, rectY + rectHeight);
+  ctx.lineTo(rectX + rectRadius, rectY + rectHeight);
+  ctx.quadraticCurveTo(rectX, rectY + rectHeight, rectX, rectY + rectHeight - rectRadius);
+  ctx.lineTo(rectX, rectY + rectRadius);
+  ctx.quadraticCurveTo(rectX, rectY, rectX + rectRadius, rectY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = 'bold 80px system-ui';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(eventTypeText, rectX + rectWidth / 2, rectY + rectHeight / 2 + 5 * scalar);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const back = new THREE.TextureLoader().load(banner);
+  const fac = new FastAverageColor();
+  const sides = await fac.getColorAsync(hackathonBanner);
+  document.body.removeChild(canvas);
+  return [texture, back, new THREE.Color(sides.rgb)];
+}
+
+const albedo = await createHackathonCanvas();
+
+const AppCanvas = document.createElement('canvas');
+AppCanvas.id = 'app';
+document.body.appendChild(AppCanvas);
+
 const scene = new THREE.Scene();
-
 const world = new CANNON.World();
-world.gravity.set(0, -9.82, 0); // m/s²
+world.gravity.set(0, -9.82, 0);
 
-// Camera
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
 camera.position.set(0, 10, 30);
 
-// Renderer
 const renderer = new THREE.WebGLRenderer({
   canvas: document.querySelector('#app'),
   antialias: true,
 });
 
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = .6;
+renderer.toneMappingExposure = 0.6;
 renderer.outputEncoding = THREE.sRGBEncoding;
 window.addEventListener('resize', onWindowResize);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 
-// Skybox
 new RGBELoader()
   .load("/env.hdr", function (texture) {
     texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -37,15 +139,12 @@ new RGBELoader()
     scene.environment = texture;
   });
 
-// Lighting
 const sunLight = new THREE.DirectionalLight(0xffe5b4, 1);
-
 const angle = 45 * Math.PI / 180;
 const d = 500;
 sunLight.position.set(d * Math.cos(angle), d * Math.sin(angle), d);
 
 sunLight.castShadow = true;
-
 scene.add(sunLight);
 
 sunLight.shadow.camera.left = -100;
@@ -58,27 +157,23 @@ sunLight.shadow.camera.far = 1000;
 sunLight.shadow.mapSize.width = 4096;
 sunLight.shadow.mapSize.height = 4096;
 
-// Cam Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.maxPolarAngle = 1.5512625986551463;
 controls.target.set(0, 0, 0);
 controls.maxDistance = 50;
-controls.cursor = new THREE.Vector3(0,0,0);
+controls.cursor = new THREE.Vector3(0, 0, 0);
 controls.maxTargetRadius = 50;
 controls.enablePan = true;
 controls.maxZoom = 1;
 
-// Plane class
 class Plane {
   constructor(scene, world, color = 0xffff00) {
-    // CANNON.js plane
     const planeShape = new CANNON.Plane();
     this.planeBody = new CANNON.Body({ mass: 0 });
     this.planeBody.addShape(planeShape);
     this.planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
     world.addBody(this.planeBody);
 
-    // THREE.js plane
     const planeGeometry = new THREE.PlaneGeometry(100, 100);
     const planeMaterial = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide });
     this.plane = new THREE.Mesh(planeGeometry, planeMaterial);
@@ -88,46 +183,89 @@ class Plane {
   }
 }
 
-// Cube class
 class Cube {
-  constructor(
-    scene,
-    world,
-    id, 
-    color = 0x00ff00, 
-    position = { x: 0, y: 0.5, z: 0 }, 
-    dimensions = { x: 1, y: 1, z: 1 }
-  ) {
-    // CANNON.js cube
+  constructor(scene, world, id, albedo, bg, sides, position = { x: 0, y: 0.5, z: 0 }, dimensions = { x: 1, y: 1, z: 1 }) {
+    this.id = id;
+
     const cubeShape = new CANNON.Box(new CANNON.Vec3(dimensions.x / 2, dimensions.y / 2, dimensions.z / 2));
     this.cubeBody = new CANNON.Body({ mass: 1 });
     this.cubeBody.addShape(cubeShape);
     this.cubeBody.position.set(position.x, position.y, position.z);
     world.addBody(this.cubeBody);
 
-    // THREE.js cube
-    const geometry = new RoundedBoxGeometry( dimensions.x, dimensions.y, dimensions.z, 10, 3.14/18 );
-    const material = new THREE.MeshStandardMaterial({ color });
-    this.cube = new THREE.Mesh(geometry, material);
+    const textureLoader = new THREE.TextureLoader();
+    const texture = {
+      ao: textureLoader.load('/material/ao.jpg'),
+      albedo: albedo,
+      height: textureLoader.load('/material/height.png'),
+      metallic: textureLoader.load('/material/metallic.jpg'),
+      normal: textureLoader.load('/material/normal.png'),
+      roughness: textureLoader.load('/material/roughness.jpg')
+    };
+
+    const material = new THREE.MeshStandardMaterial({
+      aoMap: texture.ao,
+      aoMapIntensity: 1,
+      map: texture.albedo,
+      normalMap: texture.normal,
+      normalScale: new THREE.Vector2(1, 1),
+      displacementMap: texture.height,
+      displacementScale: 0.1,
+      displacementBias: -0.1,
+      roughnessMap: texture.roughness,
+      roughness: 1,
+      metalnessMap: texture.metallic,
+      metalness: 1,
+    });
+
+    const materialBg = new THREE.MeshStandardMaterial({
+      aoMap: texture.ao,
+      aoMapIntensity: 1,
+      map: bg,
+      normalMap: texture.normal,
+      normalScale: new THREE.Vector2(1, 1),
+      displacementMap: texture.height,
+      displacementScale: 0.1,
+      displacementBias: -0.1,
+      roughnessMap: texture.roughness,
+      roughness: 1,
+      metalnessMap: texture.metallic,
+      metalness: 1,
+    });
+
+    const materialSides = new THREE.MeshStandardMaterial({
+      aoMap: texture.ao,
+      aoMapIntensity: 1,
+      color: sides,
+      normalMap: texture.normal,
+      normalScale: new THREE.Vector2(1, 1),
+      displacementMap: texture.height,
+      displacementScale: 0.1,
+      displacementBias: -0.1,
+      roughnessMap: texture.roughness,
+      roughness: 1,
+      metalnessMap: texture.metallic,
+      metalness: 1,
+    });
+
+    const geometry = new RoundedBoxGeometry(dimensions.x, dimensions.y, dimensions.z, 10, 3.14 / 18);
+    this.cube = new THREE.Mesh(geometry, [materialSides, materialSides, materialSides, materialSides, material, materialBg]);
     this.cube.castShadow = true;
     scene.add(this.cube);
 
-    // State flag for cube
     this.cubeInFrontOfCamera = false;
 
-    // Register mouse click event
-    window.addEventListener('click', (event) => this.onClick(event), false);
+    renderer.domElement.addEventListener('click', (event) => this.onClick(event), false);
   }
 
   update() {
     if (this.cubeInFrontOfCamera) {
-      // Move cube in front of camera
       const v1 = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
-      const cameraOffset = camera.position.clone().add(v1.multiplyScalar(-10));
+      const cameraOffset = camera.position.clone().add(v1.multiplyScalar(-20));
       this.cubeBody.quaternion.copy(camera.quaternion);
       this.cubeBody.position.copy(cameraOffset);
-      this.cubeBody.velocity.set(0, 0, 0); // Prevent it from falling
-      this.cubeBody.angularVelocity.set(0, 0, 0); // Prevent it from rotating
+      this.cubeBody.velocity.set(0, 0, 0);
+      this.cubeBody.angularVelocity.set(0, 0, 0);
       this.cube.position.copy(this.cubeBody.position);
       this.cube.quaternion.copy(this.cubeBody.quaternion);
     } else {
@@ -137,25 +275,19 @@ class Cube {
   }
 
   onClick(event) {
-    // Update the mouse vector with the current mouse position
     const mouse = new THREE.Vector2(
       (event.clientX / window.innerWidth) * 2 - 1,
       -(event.clientY / window.innerHeight) * 2 + 1
     );
 
-    // Use the raycaster to check if the cube was clicked
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(scene.children, true);
-    if (intersects.length > 0) {
-      // Sort the intersects array by distance from the camera
-      intersects.sort((a, b) => a.distance - b.distance);
-      const closestIntersect = intersects[0];
 
+    if (intersects.length > 0) {
+      const closestIntersect = intersects[0];
       if (closestIntersect.object === this.cube) {
-        // Toggle the cube's state
         if (this.cubeInFrontOfCamera) {
-          // The cube is in front of the camera, throw it towards the center of the plane
           this.cubeBody.type = CANNON.Body.DYNAMIC;
           const cameraDirection = new THREE.Vector3();
           const forceVec = camera.getWorldDirection(cameraDirection).multiplyScalar(30);
@@ -164,7 +296,6 @@ class Cube {
 
           this.cubeInFrontOfCamera = false;
         } else {
-          // The cube is not in front of the camera, move it closer
           this.cubeBody.type = CANNON.Body.KINEMATIC;
           this.cubeInFrontOfCamera = true;
         }
@@ -173,14 +304,13 @@ class Cube {
   }
 }
 
-// Create instances of Plane and Cube
 const plane1 = new Plane(scene, world);
 const cubes = [];
 for (let i = 0; i < 10; i++) {
-  cubes.push(new Cube(scene, world,i, Math.round(0xffffff*Math.random()), { x: Math.random()*10, y: Math.random()*10, z: Math.random()*10 },{ x: Math.random()*10, y: Math.random()*10, z: Math.random()*10 }));
+  const scalar = 0.7;
+  cubes.push(new Cube(scene, world, i, albedo[0], albedo[1], albedo[2], { x: Math.random() * 10, y: Math.random() * 10, z: Math.random() * 10 }, { x: scalar * 16, y: scalar * 9, z: scalar * 1 }));
 }
 
-// Animation
 function animate() {
   requestAnimationFrame(animate);
 
@@ -192,7 +322,6 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// Resize
 function onWindowResize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -202,27 +331,5 @@ function onWindowResize() {
 
   renderer.setSize(width, height);
 }
-
-// Helper
-const dirX = new THREE.Vector3( 1, 0, 0 );
-const dirY = new THREE.Vector3( 0, 1, 0 );
-const dirZ = new THREE.Vector3( 0, 0, 1 );
-
-dirX.normalize();
-dirY.normalize();
-dirZ.normalize();
-
-const origin = new THREE.Vector3( 0, 5, 0 );
-const length = 20;
-const hexX = 0xff0000;
-const hexY = 0x00ff00;
-const hexZ = 0x0000ff;
-
-const arrowX = new THREE.ArrowHelper( dirX, origin, length, hexX );
-const arrowY = new THREE.ArrowHelper( dirY, origin, length, hexY );
-const arrowZ = new THREE.ArrowHelper( dirZ, origin, length, hexZ );
-scene.add(arrowX);
-scene.add(arrowY);
-scene.add(arrowZ);
 
 animate();
