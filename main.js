@@ -15,24 +15,44 @@ async function pullHackathons() {
   return last50;
 }
 
+// Function to create a texture from an image URL
+async function createTextureFromImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = url;
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const texture = new THREE.CanvasTexture(canvas);
+      resolve(texture);
+    };
+
+    img.onerror = reject;
+  });
+}
+
 // Function to create a hackathon card canvas
 async function createHackathonCanvas(
   id = 'default',
   banner = '/default_card_bg.png',
   logo = '/logo.png',
-  name = 'RythmHacks',
+  name = 'HACKATHON',
   date = 'September 1–3',
-  city = 'Waterloo',
+  city = 'Whatever',
   state = '',
-  country = 'Canada',
+  country = 'Poland',
   eventType = 'in-person'
 ) {
   const scalar = 4; // Scaling factor for high resolution
   const hackathonBanner = new Image();
-  hackathonBanner.src = banner !== '/default_card_bg.png' ? 'https://corsproxy.io/?'+banner : banner;
+  hackathonBanner.src = banner !== '/default_card_bg.png' ? 'https://corsproxy.io/?' + banner : banner;
 
   const hackathonLogo = new Image();
-  hackathonLogo.src = logo !== '/logo.png' ? 'https://corsproxy.io/?'+logo : logo;
+  hackathonLogo.src = logo !== '/logo.png' ? 'https://corsproxy.io/?' + logo : logo;
 
   const hackathonCanvas = document.createElement('canvas');
   hackathonCanvas.width = 640 * scalar;
@@ -69,10 +89,12 @@ async function createHackathonCanvas(
   const text_distance = 25 * scalar;
   // Draw the hackathon name
   ctx.fillText(name, 320 * scalar, 285 * scalar + text_distance);
+  ctx.strokeText(name, 320 * scalar, 285 * scalar + text_distance);
 
   ctx.font = '100px system-ui';
   // Draw the hackathon date and location
   ctx.fillText(`${date}: ${city}, ${country}`, 320 * scalar, 240 * scalar + text_distance);
+  ctx.strokeText(`${date}: ${city}, ${country}`, 320 * scalar, 240 * scalar + text_distance);
 
   const eventTypeText = eventType.charAt(0).toUpperCase() + eventType.slice(1);
   const eventTypeColor = eventTypeColors[eventType];
@@ -107,19 +129,23 @@ async function createHackathonCanvas(
   ctx.fillText(eventTypeText, rectX + rectWidth / 2, rectY + rectHeight / 2 + 5 * scalar);
 
   const texture = new THREE.CanvasTexture(canvas);
-  const back = new THREE.TextureLoader().load(hackathonBanner);
-  const fac = new FastAverageColor();
-  const sides = new Image().src = '/deafult_card_bg.png'; 
   document.body.removeChild(canvas);
-  return [texture, back, new THREE.Color(sides.rgb)];
+
+  // Convert sides image to canvas texture
+  const sidesTexture = await createTextureFromImage(banner);
+
+  // Convert background image to canvas texture
+  const backgroundTexture = await createTextureFromImage(hackathonBanner.src);
+
+  return [texture, backgroundTexture, sidesTexture];
 }
 
 // Main function to initialize the scene
 async function main() {
   const hackathons = await pullHackathons();
 
-  // Create hackathon cards
-  const hackathonCards = await Promise.all(hackathons.map((hackathon, index) => {
+  // Create hackathon cards this doesn't work as it should
+  /*const hackathonCards = await Promise.all(hackathons.map((hackathon, index) => {
     return createHackathonCanvas(
       `hackathon_${index}`,
       hackathon.banner || '/default_card_bg.png',
@@ -131,15 +157,17 @@ async function main() {
       hackathon.country || '',
       hackathon.eventType
     );
-  }));
-  
-  console.log(hackathonCards)
-  console.log('here')
-  
+  }));*/
+
+const hackathonCards = [];
+for (let i = 0; i < 50; i++) {
+  hackathonCards.push(await createHackathonCanvas());
+}; //this works
+
   const AppCanvas = document.createElement('canvas');
   AppCanvas.id = 'app';
   document.body.appendChild(AppCanvas);
-  
+
   const scene = new THREE.Scene();
   const world = new CANNON.World();
   world.gravity.set(0, -9.82, 0); // Set gravity for the physics world
@@ -196,22 +224,50 @@ async function main() {
   controls.maxZoom = 1;
 
   // Class to create the ground plane
-  class Plane {
-    constructor(scene, world, color = 0xffff00) {
-      const planeShape = new CANNON.Plane();
-      this.planeBody = new CANNON.Body({ mass: 0 });
-      this.planeBody.addShape(planeShape);
-      this.planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-      world.addBody(this.planeBody);
+class Plane {
+  constructor(scene, world, color = 0xffff00) {
+    const planeShape = new CANNON.Plane();
+    this.planeBody = new CANNON.Body({ mass: 0 });
+    this.planeBody.addShape(planeShape);
+    this.planeBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    world.addBody(this.planeBody);
 
-      const planeGeometry = new THREE.PlaneGeometry(100, 100);
-      const planeMaterial = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide });
-      this.plane = new THREE.Mesh(planeGeometry, planeMaterial);
-      this.plane.receiveShadow = true;
-      this.plane.rotation.x = Math.PI / 2;
-      scene.add(this.plane);
-    }
+    const textureLoader = new THREE.TextureLoader();
+
+    const texture = {
+      ao: textureLoader.load('/plane/ao.jpg'),
+      albedo: textureLoader.load('/plane/color.jpg'),
+      height: textureLoader.load('/plane/height.png'),
+      normal: textureLoader.load('/plane/normal.png'),
+      roughness: textureLoader.load('/plane/roughness.jpg')
+    };
+
+    const planeGeometry = new THREE.PlaneGeometry(100, 100);
+    planeGeometry.computeBoundingBox();
+    planeGeometry.computeVertexNormals();
+
+    const planeMaterial = new THREE.MeshStandardMaterial({
+      aoMap: texture.ao,
+      aoMapIntensity: 1,
+      map: texture.albedo,
+      normalMap: texture.normal,
+      normalScale: new THREE.Vector2(1, 1),
+      displacementMap: texture.height,
+      displacementScale: 0.1,
+      displacementBias: -0.1,
+      roughnessMap: texture.roughness,
+      roughness: 1,
+      side: THREE.DoubleSide
+    });
+
+
+    this.plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    this.plane.receiveShadow = true;
+    this.plane.rotation.x = Math.PI / 2;
+    scene.add(this.plane);
   }
+}
+
 
   // Class to create the hackathon card objects
   class Card {
@@ -219,7 +275,7 @@ async function main() {
       this.id = id;
 
       const cubeShape = new CANNON.Box(new CANNON.Vec3(dimensions.x / 2, dimensions.y / 2, dimensions.z / 2));
-      this.cubeBody = new CANNON.Body({ mass: 1 });
+      this.cubeBody = new CANNON.Body({ mass: 2 });
       this.cubeBody.addShape(cubeShape);
       this.cubeBody.position.set(position.x, position.y, position.z);
       world.addBody(this.cubeBody);
@@ -267,7 +323,7 @@ async function main() {
       const materialSides = new THREE.MeshStandardMaterial({
         aoMap: texture.ao,
         aoMapIntensity: 1,
-        color: sides,
+        map: sides,
         normalMap: texture.normal,
         normalScale: new THREE.Vector2(1, 1),
         displacementMap: texture.height,
@@ -278,7 +334,6 @@ async function main() {
         metalnessMap: texture.metallic,
         metalness: 1,
       });
-
       const geometry = new RoundedBoxGeometry(dimensions.x, dimensions.y, dimensions.z, 10, 3.14 / 18);
       this.cube = new THREE.Mesh(geometry, [materialSides, materialSides, materialSides, materialSides, material, materialBg]);
       this.cube.castShadow = true;
@@ -321,7 +376,7 @@ async function main() {
           if (this.cubeInFrontOfCamera) {
             this.cubeBody.type = CANNON.Body.DYNAMIC;
             const cameraDirection = new THREE.Vector3();
-            const forceVec = camera.getWorldDirection(cameraDirection).multiplyScalar(30);
+            const forceVec = camera.getWorldDirection(cameraDirection).multiplyScalar(50);
             const forceDirection = new CANNON.Vec3(forceVec.x, forceVec.y, forceVec.z);
             this.cubeBody.applyImpulse(forceDirection, this.cubeBody.position);
 
@@ -338,7 +393,7 @@ async function main() {
   // Create the ground plane
   const plane1 = new Plane(scene, world);
 
-// Create the hackathon cards and add them to the scene **DOES NOT WORK: DOM exception insecure sth**
+  // Create the hackathon cards and add them to the scene
   const cubes = hackathonCards.map((card, index) => {
     const scalar = 0.7;
     return new Card(
