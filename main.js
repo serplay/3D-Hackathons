@@ -165,7 +165,7 @@ async function main() {
   world.gravity.set(0, -9.82, 0); // Set gravity for the physics world
 
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
-  camera.position.set(0, 10, 30); // Set initial camera position
+  camera.position.set(0, 10, 30); // Set initial camera position 
 
   const renderer = new THREE.WebGLRenderer({
     canvas: document.querySelector('#app'),
