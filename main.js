@@ -8,11 +8,9 @@ import { FastAverageColor } from 'fast-average-color';
 
 // Function to fetch hackathons from an API
 async function pullHackathons() {
-  const response = await fetch('https://corsproxy.io/?' + 'https://hackathons.hackclub.com/api/events/all');
+  const response = await fetch('/hackathons/hackathons.json');
   const hackathons = await response.json();
-  const length = hackathons.length;
-  const last50 = hackathons.slice(length - 50, length); // Get the last 50 hackathons
-  return last50;
+  return hackathons;
 }
 
 // Function to create a texture from an image URL
@@ -49,10 +47,10 @@ async function createHackathonCanvas(
 ) {
   const scalar = 4; // Scaling factor for high resolution
   const hackathonBanner = new Image();
-  hackathonBanner.src = banner !== '/default_card_bg.png' ? 'https://corsproxy.io/?' + banner : banner;
+  hackathonBanner.src = banner !== '/default_card_bg.png' ? banner : banner;
 
   const hackathonLogo = new Image();
-  hackathonLogo.src = logo !== '/logo.png' ? 'https://corsproxy.io/?' + logo : logo;
+  hackathonLogo.src = logo !== '/logo.png' ? logo : logo;
 
   const hackathonCanvas = document.createElement('canvas');
   hackathonCanvas.width = 640 * scalar;
@@ -144,12 +142,11 @@ async function createHackathonCanvas(
 async function main() {
   const hackathons = await pullHackathons();
 
-  // Create hackathon cards this doesn't work as it should
-  /*const hackathonCards = await Promise.all(hackathons.map((hackathon, index) => {
+  const hackathonCards = await Promise.all(hackathons.map((hackathon, index) => {
     return createHackathonCanvas(
       `hackathon_${index}`,
-      hackathon.banner || '/default_card_bg.png',
-      hackathon.logo || '/logo.png',
+      hackathon.banner || `/hackathons/hackathon${index}banner.png`,
+      hackathon.logo || `/hackathons/hackathon${index}logo.png`,
       hackathon.name,
       hackathon.date,
       hackathon.city || '',
@@ -157,13 +154,8 @@ async function main() {
       hackathon.country || '',
       hackathon.eventType
     );
-  }));*/
-
-const hackathonCards = [];
-for (let i = 0; i < 50; i++) {
-  hackathonCards.push(await createHackathonCanvas());
-}; //this works
-
+  }));
+  //const albedo = await createHackathonCanvas('da', '/hackathons/hackathon1banner.png')
   const AppCanvas = document.createElement('canvas');
   AppCanvas.id = 'app';
   document.body.appendChild(AppCanvas);
@@ -392,10 +384,10 @@ class Plane {
 
   // Create the ground plane
   const plane1 = new Plane(scene, world);
-
+  const scalar = 0.7;
   // Create the hackathon cards and add them to the scene
-  const cubes = hackathonCards.map((card, index) => {
-    const scalar = 0.7;
+  console.log(hackathonCards);
+  const cubes = await Promise.all(hackathonCards.map(async (card, index) => {
     return new Card(
       scene,
       world,
@@ -406,8 +398,8 @@ class Plane {
       { x: Math.random() * 10, y: Math.random() * 10, z: Math.random() * 10 },
       { x: scalar * 16, y: scalar * 9, z: scalar * 1 }
     );
-  });
-
+  }));
+ //const cube = new Card(scene, world, 1, albedo[0], albedo[1], albedo[2], { x: 0, y: 0.5, z: 0 }, { x: scalar*16, y: scalar * 9, z: scalar*1 });
   // Animation loop
   function animate() {
     requestAnimationFrame(animate);
@@ -415,6 +407,7 @@ class Plane {
     world.step(1 / 60); // Step the physics world
 
     cubes.forEach(cube => cube.update());
+    //cube.update();
 
     controls.update(); // Update camera controls
     renderer.render(scene, camera); // Render the scene
